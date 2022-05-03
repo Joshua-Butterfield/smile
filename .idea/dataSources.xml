@@ -8,12 +8,5 @@
       <jdbc-url>jdbc:sqlite:smile.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
-    <data-source source="LOCAL" name="smile" uuid="0014ac90-f70d-480d-a19c-3e8cc5d26b2d">
-      <driver-ref>sqlite.xerial</driver-ref>
-      <synchronize>true</synchronize>
-      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:C:\Users\Joshua Butterfield\OneDrive - Wellington College\Smile\smile.db</jdbc-url>
-      <working-dir>$ProjectFileDir$</working-dir>
-    </data-source>
   </component>
 </project>

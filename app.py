@@ -2,11 +2,22 @@ from flask import Flask, render_template, request, redirect, session
 import sqlite3
 from sqlite3 import Error
 from flask_bcrypt import Bcrypt
+from datetime import datetime
 
 DATABASE = "C:/Users/18016/OneDrive - Wellington College/Smile/smile.db"
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
 app.secret_key = "banana"
+
+# Validation Function
+   # - Checks names at least 2 characters
+   # - checks for no incorrect characters
+
+# cant access login or signup if logged in
+
+# if we have a validation error, can we repopulate the form to save the user retyping
+
+# welcome 'name' on menu page
 
 
 def create_connection(db_file):
@@ -17,6 +28,7 @@ def create_connection(db_file):
     """
     try:
         connection = sqlite3.connect(db_file)
+        connection.execute('pragma foreign_keys=ON')
         return connection
     except Error as e:
         print(e)
@@ -43,13 +55,111 @@ def render_homepage():
 @app.route('/menu')
 def render_menu_page():
     con = create_connection(DATABASE)
-    query = "SELECT name, description, volume, price, image FROM product"
+    query = "SELECT name, description, volume, price, image, id FROM product"
     cur = con.cursor()  # Create cursor to run the query
     cur.execute(query)  # Runs the query
     product_list = cur.fetchall()
-    print(product_list)
     con.close()
-    return render_template('menu.html', products=product_list, logged_in=is_logged_in())
+
+    if is_logged_in():
+        fname = session['fname']
+    else:
+        fname = ""
+    return render_template('menu.html', products=product_list, logged_in=is_logged_in(), user_id=fname)
+
+
+@app.route('/addtocart/<product_id>')
+def render_addtocart_page(product_id):
+    try:
+        product_id = int(product_id)
+    except ValueError:
+        print("{} is not an integer".format(product_id))
+        return redirect("/menu?error=Invalid+product+id")
+
+    userid = session['customer_id']
+    timestamp = datetime.now()
+    print("Add {} to cart".format(product_id))
+
+    query = "INSERT INTO cart (customerid, productid, timestamp) VALUES (?, ?, ?)"
+    con = create_connection(DATABASE)
+    cur = con.cursor()
+
+    # try to insert - this will fail if there is a foreign key
+    try:
+        cur.execute(query, (userid, product_id, timestamp))
+    except sqlite3.IntegrityError as e:
+        print(e)
+        print("### PROBLEM INSERTING INTO DATABASE - FOREIGN KEY ###")
+        con.close()
+        return redirect('/menu?error=Something+went+very+very+wrong')
+
+    con.commit()
+    con.close()
+    return redirect(request.referrer)
+
+
+@app.route('/cart')
+def render_cart_page():
+    if not is_logged_in():
+        return redirect('/menu')
+    else:
+        customer_id = session['customer_id']
+        query = "SELECT productid FROM cart WHERE customerid=?;"
+        con = create_connection(DATABASE)
+        cur = con.cursor()
+        cur.execute(query, (customer_id,))
+        product_ids = cur.fetchall()
+        print(product_ids)
+
+        for i in range(len(product_ids)):
+            product_ids[i] = product_ids[i][0]
+        print(product_ids)
+
+        unique_product_ids = list(set(product_ids))
+        print(unique_product_ids)
+
+        for i in range(len(unique_product_ids)):
+            product_count = product_ids.count(unique_product_ids[i])
+            unique_product_ids[i] = [unique_product_ids[i], product_count]
+        print(unique_product_ids)
+        total = 0
+        query = "SELECT name, price FROM product WHERE id = ?"
+        for item in unique_product_ids:
+            cur.execute(query, (item[0], ))
+            item_details = cur.fetchall()
+            print(item_details)
+            item.append(item_details[0][0])
+            item.append(item_details[0][1])
+            item.append(item[1] * item[3])
+            print(item)
+            total += item[4]
+        con.close()
+        return render_template('cart.html', cart_data=unique_product_ids, logged_in=is_logged_in(), total=total, fname=session['fname'])
+
+
+@app.route('/removeonefromcart/<product_id>')
+def remove_one(product_id):
+    if is_logged_in():
+        customer_id = session['customer_id']
+        query = "DELETE FROM cart WHERE id = (SELECT min(id) FROM cart WHERE customerid = ? AND productid = ?)"
+        con = create_connection(DATABASE)
+        cur = con.cursor()
+        cur.execute(query, (customer_id, product_id))
+        con.commit()
+        con.close()
+    return redirect("/cart")
+
+
+@app.route('/confirmorder')
+def confirmorder():
+    userid = session['userid']
+    con = create_connection(DATABASE)
+    cur = con.cursor()
+    query = "DELETE FROM cart WHERE userid=?;"
+    cur.execute(query, (userid,))
+    con.commit()
+    con.close()
+    return redirect('/?message=Order+complete')
 
 
 @app.route('/contact')
@@ -81,12 +191,12 @@ def render_login_page():
 
         if not bcrypt.check_password_hash(db_password, password):
             return redirect("/login?error=Email+or+password+is+incorrect")
-        # Set up a session for the login
+        # Set up a session for the login to tell the program I'm logged in
         session['email'] = email
-        session['user_id'] = user_id
+        session['customer_id'] = user_id
         session['fname'] = first_name
         session['cart'] = []
-        return redirect('/')
+        return redirect('/menu')
 
     return render_template('login.html', logged_in=is_logged_in())
 
